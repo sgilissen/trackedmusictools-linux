@@ -1,0 +1,372 @@
+#!/bin/bash
+###############################################################################
+# 			 MODARCHIVE.ORG DOWNLOADERR
+#
+#  This script will download mods from modarchive.org to a directory of your
+#  choice. Type -h for help and options. Download by genre, or other search
+#  criteria.
+#
+#  You will be prompted where you would like to save the mods when you run
+#  the script. If you leave the prompt empty, it will use pwd as path.
+#
+#  If you are using mac os x you need to run this command before this will work
+#  function _wget() { curl "${1}" -o $(basename "${1}") ; }; alias wget='_wget'
+#
+#  Derrived from MODARCHIVE JUKEBOX by Fernando Sancho AKA 'toptnc'
+#  Modifications by Demonic Sweaters www.demonicsweaters.com
+#  Edits by Milk - https://github.com/mxmilkb/moddownloaderr
+#  See also https://wiki.thingsandstuff.org/Tracker
+#
+#  This script is released under the terms of the GNU LGPL v3.0 license
+#
+###############################################################################
+
+# Exit script on any error
+set +e
+
+# Configuration file overrides defaults
+if [ -f "$HOME/.config/moddownloaderr/moddownloaderrrc" ]; then
+  source "$HOME/.config/moddownloaderr/moddownloaderrrc"
+fi
+
+
+# trap ctrl-c and call ctrl_c()
+trap ctrl_c INT
+
+
+usage()
+{
+  cat << EOF
+usage: $0 [option]
+
+Mod Downloaderr options:
+  -h               Show this help message
+  -n <number>      Optionally cap the total number of tracks to download
+  -s <section>     Download from selected section: Can be one of this
+       uploads     This is a list of the recent member upload activity, 80 files
+       new         Same a uploads but using search engine, 150 files
+       featured    These modules have been nominated by the crew for either
+                     outstanding quality, technique or creativity (or
+                     combination of).
+       favourites  These modules have been nominated by the members via their
+                     favourites.
+       downloads   The top 1000 most downloaded modules, recorded since circa
+                     2002.
+       topscore    This chart lists the most revered modules on the archive.
+       random      Ramdom module from entire archive
+   -a <artist>     Search in artist database
+   -m <module>     Search in module database (Title and Filename)
+   -g [<genrenum>] Download a specific genre. Either enter the modarchive.org
+                     genres number, or select from a list.
+   -d              Enable debug message output.
+
+Hint: Use + symbol instead blankspaces in search strings.
+
+Hint 2: If you're running Mac OSX, you must first run this command before the
+script will run:
+  function _wget() { curl "${1}" -o $(basename "${1}") ; }; alias wget='_wget'
+
+Hint 3: Use 'MDDEBUG=1 moddownloaderr' to enable debug output.
+
+Hint 4: Some tracks are in more than one genre category. Use dupeguru to remove
+duplicate files.
+
+EOF
+}
+
+
+declare -A possiblegenres=( [1]="Electronic" [2]="Electronic (Ambient)" [3]="Electronic (Dance)" [6]="Electronic (Drum & Bass)" [7]="Electronic (Techno)" [8]="Video Game" [9]="Electronic (Breakbeat)" [10]="Electronic (House)" [11]="Electronic (Progressive)" [12]="Pop" [13]="Rock" [14]="Rock (Hard)" [15]="Rock (Soft)" [18]="Country" [19]="Blues" [21]="Folk" [22]="Hip-hop" [24]="Ska" [25]="Soul" [26]="R & B" [27]="Reggae" [28]="Medieval" [29]="Jazz" [30]="Jazz (Acid)" [31]="Jazz (Modern)" [32]="Funk" [34]="Electronic (Industrial)" [35]="Punk" [36]="Metal" [37]="Metal (Extreme)" [38]="Gothic" [39]="Electronic (Hardcore)" [40]="Electronic (Gabber)" [41]="Other" [42]="World" [43]="Soundtrack" [44]="New Age" [45]="Comedy" [46]="Experimental" [47]="Spiritual" [48]="Alternative" [49]="Religious" [50]="Orchestral" [52]="Fantasy" [53]="One Hour Compo" [54]="Chiptune" [55]="Demo Style" [56]="Ballad" [58]="Disco" [59]="Piano" [60]="Electronic (Jungle)" [61]="Pop (Synth)" [62]="Pop (Soft)" [63]="Trance (Acid)" [64]="Trance (Hard)" [65]="Electronic (Rave)" [66]="Trance (Goa)" [67]="Trance (Dream)" [70]="Trance (Tribal)" [71]="Trance" [72]="Christmas" [74]="Big Band" [75]="Swing" [76]="Vocal Montage" [82]="Hallowe'en" [85]="Trance (Progressive)" [99]="Electronic (IDM)" [100]="Electronic (Other)" [101]="Electronic (Minimal)" [102]="Fusion" [103]="Fusion" [105]="Bluegrass" [106]="Chillout" [107]="Easy Listening" )
+
+echo_genres()
+{
+  cat << EOF
+  Numbers for each genre:
+
+    Alternative                        Jazz, Blues
+      Alternative: 48                    Big Band: 74
+      Gothic: 38                         Blues: 19
+      Grunge: 103                        Jazz (Acid): 30
+      Metal (Extreme): 37                Jazz (Modern): 31
+      Metal: 36                          Jazz: 29
+      Punk: 35                           Swing: 75
+
+    Demo, Tracking Scene               Other
+      Chiptune: 54                       Bluegrass: 105
+      Demo Style: 55                     Classical: 20
+      One Hour Compo: 53                 Comedy: 45
+                                         Country: 18
+    Electronica                          Experimental: 46
+      Chillout: 106                      Fantasy: 52
+      Electronic: 1                      Folk: 21
+      Electronic (Ambient): 2            Fusion: 102
+      Electronic (Breakbeat): 9          Medieval: 28
+      Electronic (Dance): 3              New Age: 44
+      Electronic (Drum & Bass): 6        Orchestral: 50
+      Electronic (Gabber): 40            Other: 41
+      Electronic (Hardcore): 39          Piano: 59
+      Electronic (House): 10             Religious: 49
+      Electronic (IDM): 99               Soundtrack: 43
+      Electronic (Industrial): 34        Spiritual: 47
+      Electronic (Jungle): 60            Video Game: 8
+      Electronic (Minimal): 101          Vocal Montage: 76
+      Electronic (Other): 100            World: 42
+      Electronic (Progressive): 11
+      Electronic (Rave): 65            Pop, Rock
+      Electronic (Techno): 7             Ballad: 56
+      Trance: 71                         Disco: 58
+      Trance (Acid): 63                  Easy Listening: 107
+      Trance (Dream): 67                 Funk: 32
+      Trance (Goa): 66                   Pop: 12
+      Trance (Hard): 64                  Pop (Synth): 61
+      Trance (Progressive): 85           Pop (Soft): 62
+      Trance (Tribal): 70                Rock: 13
+                                         Rock (Hard): 14
+    Urban, Hip-Hop                       Rock (Soft): 15
+      Hip-Hop: 22
+      R & B: 26                        Seasonal
+      Reggae: 27                         Christmas: 72
+      Ska: 24                            Halloween: 82
+      Soul: 25
+
+EOF
+}
+
+
+create_playlist()
+{
+  PLAYLIST=""
+  PLAYLISTFILE=/tmp/moddownloaderr/moddownloaderr.url
+  # TODO implement moddownloaderr instance specific download playlists
+
+  if [ -z "$PAGES" ]; then
+    PLAYLIST=$(wget -o /dev/null -O - "${MODURL}" | grep href | sed 's/href=/\n/g' | sed 's/>/\n/g' | grep downloads.php | sed 's/\"//g' | sed 's/'\''//g'|cut -d " " -f 1| uniq)
+  else
+    echo "Need to download ${PAGES} pages of results. This may take a while..."
+    for (( PLPAGE = 1; PLPAGE <= PAGES; PLPAGE ++ ))
+    do
+      (( PERCENT = PLPAGE * 100 / PAGES ))
+      echo -ne "${PERCENT}% completed\r"
+      PLPAGEARG="&page=$PLPAGE";
+      LIST=$(wget -o /dev/null -O - "${MODURL}${PLPAGEARG}"| grep href | sed 's/href=/\n/g' | sed 's/>/\n/g' | grep downloads.php | sed 's/\"//g' | sed 's/'\''//g'|cut -d " " -f 1| uniq )
+      PLAYLIST=$(printf "${PLAYLIST}\n${LIST}")
+    done
+    echo ""
+  fi
+  [ ! -d /tmp/moddownloaderr ] && mkdir /tmp/moddownloaderr;
+  if [ -z $SHUFFLE ]; then
+    echo "$PLAYLIST" | sed '/^$/d' > $PLAYLISTFILE
+  else
+    echo "$PLAYLIST" | sed '/^$/d' | awk 'BEGIN { srand() } { print rand() "\t" $0 }' | sort -n | cut -f2- > $PLAYLISTFILE
+  fi
+}
+
+
+pages_parse()
+{
+  [ $MDDEBUG ] && echo DEBUG modurl: $MODURL
+  echo Parsing download pages..
+  RAWPAGE=$(wget  -o /dev/null -O - $MODURL)
+  case "$RAWPAGE" in
+  *no*were?found.*)
+    echo No results found, exiting..
+    exit
+    ;;
+  esac
+  # [ $MDDEBUG ] && echo DEBUG rawpage: $RAWPAGE
+  # export "$RAWPAGE"
+  PAGES=$(echo $RAWPAGE | grep class\=\'pagination | sed 's/[<>]/\n/g' | grep \#mods | grep -oP '^\D*\d+\D*\K\d+' | sort -g | tail -1 )
+  # PAGES=$(echo $RAWPAGE | grep class\=\'pagination | sed 's/[<>]/\n/g' | grep \#mods | tail -n 1 | sed 's/*page\=//' | grep -oP '^\D*\d+\D*\K\d+' )
+  # PAGES=$(echo $RAWPAGE | sed 's/[<>]/\n/g' | grep "page=" | tail -n 1 | sed 's/page=/\n/' | tail -n 1 | cut -d "#" -f 1)
+  # PAGES=$(echo $RAWPAGE | sed 's/a class/\n/g' | grep "&gt;&gt;" | tail -n1 | cut -d = -f7 - | cut -d \# -f1 -)
+  [ $MDDEBUG ] && echo DEBUG pages detected: $PAGES
+  [ $MDDEBUG ] && echo
+}
+
+
+set_modpath()
+{
+  [ $MDDEBUG ] && echo
+  CURRENTPATH=$(pwd)
+  echo "Where do you want to save the mods?"
+  read -p "> " -e -i $CURRENTPATH MODPATH
+  mkdir -p "$MODPATH"
+  echo Download path has been set to: $MODPATH
+  [ $MDDEBUG ] && echo
+}
+
+
+ctrl_c()
+{
+  echo
+  echo "** Ctrl-c detected - exiting! **"
+  [ $MODFILE ] && [ $MDDEBUG ] && echo DEBUG partial file being removed: $MODFILE
+  [ $MODFILE ] && rm $MODPATH/$MODFILE
+  exit
+}
+
+
+echo "ModArchive Downloaderr"
+
+TRACKSMAXNUM=9999
+
+while getopts ":hrm:n:a:s:p:gd" OPTION
+do
+  case $OPTION in
+    h)
+      usage
+      exit 0;
+      ;;
+
+    d)
+      MDDEBUG=true
+      # set -x
+      echo "** DEBUG OUTPUT IS ENABLED **" && echo
+      ;;
+
+    s)
+      case $OPTARG in
+        uploads)
+          echo Program mode: uploads - latest 80 uploads
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=view_actions_uploads"
+          pages_parse
+          ;;
+        new)
+          echo Program mode: new - latest 150 uploads
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=search&search_type=new_additions"
+          pages_parse
+          ;;
+        featured)
+          echo Program mode: featured
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=view_chart&query=featured"
+          pages_parse
+          ;;
+        favourites)
+          echo Program mode: top favourites
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=view_top_favourites"
+          pages_parse
+          ;;
+        downloads)
+          echo Program mode: top downloads
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=view_chart&query=tophits"
+          pages_parse
+          ;;
+        topscore)
+          echo Program mode: top score
+          set_modpath
+          MODURL="http://modarchive.org/index.php?request=view_chart&query=topscore"
+          pages_parse
+          ;;
+        random)
+          set_modpath
+          RANDOMSONG="true"
+          MODURL="http://modarchive.org/index.php?request=view_random"
+          PAGES=
+          ;;
+        ?)
+          usage
+          exit 1
+          ;;
+      esac
+      ;;
+
+    a)
+      set_modpath
+      # [ $MDDEBUG ] && echo DEBUG option: $OPTION"
+      # [ $MDDEBUG ] && echo DEBUG optarg: $OPTARG"
+      ARGLEN=$(echo "$OPTARG" | wc -m)
+      [ $MDDEBUG ] && echo DEBUG arglen: $ARGLEN
+      [ $ARGLEN -gt 31 ] && echo "Query string "$OPTARG" is too long (over 31 characters). Exiting.." && exit
+      MODURL="http://modarchive.org/index.php?query=${OPTARG}&submit=Find&request=search&search_type=guessed_artist&order=5"
+      pages_parse
+      ;;
+
+    m)
+      set_modpath
+      MODURL="http://modarchive.org/index.php?request=search&query=${OPTARG}&submit=Find&search_type=filename_or_songtitle"
+      pages_parse
+      ;;
+
+    n)
+      # expr $OPTARG + 1 > /dev/null
+      TRACKSMAXNUM=${OPTARG}
+      [ $MDDEBUG ] && echo DEBUG tracksmaxnum: $TRACKSMAXNUM && echo
+      ;;
+
+    g)
+      GENRENUM=${@:$OPTIND}
+      if [ -z $GENRENUM ]; then
+        echo_genres
+        echo "What genre do you wish to download? (enter a number from above)"
+        GENRENUM=0
+        while [ -z "${possiblegenres[$GENRENUM]}" ]
+        do
+          read -p "> " GENRENUM
+          [ -z "${possiblegenres[$GENRENUM]}" ] && printf '\e[A\e[K'
+        done
+      fi
+      [ $MDDEBUG ] && echo DEBUG genrenum: $GENRENUM
+      echo You have selected to download: ${possiblegenres[$GENRENUM]}
+      set_modpath
+      MODURL="http://modarchive.org/index.php?query=${GENRENUM}&request=search&search_type=genre"
+      pages_parse
+      ;;
+
+    ?)
+      usage
+      exit 1
+      ;;
+
+  esac
+done
+
+if [ -z $MODURL ]; then
+  usage
+  exit 1
+fi
+
+LOOP="true"
+if [ -z $RANDOMSONG ]; then
+  echo "Creating download queue playlist.."
+  create_playlist
+  [ $MDDEBUG ] && echo DEBUG playlist file: $PLAYLISTFILE
+  TRACKSFOUND=$(wc -l ${PLAYLISTFILE} | cut -d " " -f 1)
+  echo "There are ${TRACKSFOUND} tracks in the download queue"
+  [ $MDDEBUG ] && echo
+  TFLEN=${#TRACKSFOUND}
+  [ $MDDEBUG ] && echo DEBUG tracks found number columns: $TFLEN
+  # [ $MDDEBUG ] && [ $PAGES ] && TFCALC=$(echo "scale=1; ${TRACKSFOUND}/40" | bc) && echo -n "DEBUG pages should be: " && echo $((`echo ${TFCALC} | cut -f1 -d"."` + 1 ))
+fi
+
+[ $MDDEBUG ] && echo DEBUG tracksmaxnum: $TRACKSMAXNUM
+[ $MDDEBUG ] && echo && echo DEBUG press enter to start downloads
+[ $MDDEBUG ] && read
+
+COUNTER=1
+while [ $LOOP = "true" ]; do
+  if [ -z $RANDOMSONG ]; then
+    SONGURL=$(cat ${PLAYLISTFILE} | head -n ${COUNTER} | tail -n 1)
+    printf "%0${TFLEN}d" $COUNTER
+    let COUNTER=$COUNTER+1
+    [ $TRACKSFOUND -gt 0 ] && [ $COUNTER -gt $TRACKSFOUND ] && LOOP="false"
+  else
+    SONGURL=$(wget -o /dev/null -O - "$MODURL" | sed 's/href=\"/href=\"\n/g' | sed 's/\">/\n\">/g' | grep downloads.php | head -n 1);
+    echo -n $COUNTER
+    let COUNTER=$COUNTER+1
+    [ $TRACKSFOUND -gt 0 ] && [ $COUNTER -gt $TRACKSFOUND ] && LOOP="false"
+  fi
+
+  MODFILE=$(echo "$SONGURL" | cut -d "#" -f 2)
+  if [ ! -e "${MODPATH}/${MODFILE}" ]; then
+    echo "/$TRACKSFOUND - Downloading $SONGURL to $MODPATH/$MODFILE";
+    wget -o /dev/null -O "${MODPATH}/${MODFILE}" "$SONGURL";
+    let TRACKSCOUNTER=$TRACKSCOUNTER+1
+    [ $TRACKSCOUNTER -eq $TRACKSMAXNUM ] && echo && echo $TRACKSMAXNUM tracks downloaded as requested - exiting now... && LOOP="false"
+  elif [ -e "${MODPATH}/${MODFILE}" ]; then
+    echo "/$TRACKSFOUND - File already exists as ${MODPATH}/${MODFILE}"
+  fi
+done
